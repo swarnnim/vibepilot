@@ -147,8 +147,18 @@ def test_incoherent_pick_is_dropped():
     seed = ent("s", "Seed", "movie", ["quiet", "calm"])
     prof = TasteProfile.from_seeds([seed])
     off = ent("off", "Off Taste", "restaurant", ["quantum", "golf", "neon"], pop=0.1)
-    pick = choose_pick([(off, 0.9)], prof, [], set())
-    assert pick is None, "a pick sharing nothing with the seeds must be dropped"
+    pick = choose_pick([(off, 0.05)], prof, [], set())
+    assert pick is None, "a pick with no shared tags and no taste-graph affinity must be dropped"
+
+
+def test_high_affinity_cross_domain_pick_is_chosen():
+    # Live-backend case: cross-domain tag vocabularies barely overlap, so a
+    # pick may share no tags yet carry a strong taste-graph affinity.
+    seed = ent("s", "Seed", "movie", ["quiet", "calm"])
+    prof = TasteProfile.from_seeds([seed])
+    xd = ent("xd", "Cross Domain", "restaurant", ["quantum", "golf", "neon"], pop=0.5)
+    pick = choose_pick([(xd, 0.92)], prof, [], set())
+    assert pick is not None and pick.entity.id == xd.id
 
 
 def test_coherent_pick_is_chosen():
@@ -244,7 +254,7 @@ def test_live_client_insights_request_and_parse():
     hits = client.related(["urn:entity:person:wes-anderson"], "restaurant", limit=5)
     url, _ = t.calls[0]
     assert "/v2/insights/" in url
-    assert "filter.type=urn%3Aentity%3Arestaurant" in url
+    assert "filter.type=urn%3Aentity%3Aplace" in url
     assert "signal.interests.entities=urn%3Aentity%3Aperson%3Awes-anderson" in url
     assert "take=5" in url
     # the seed itself is filtered out of its own recommendations
