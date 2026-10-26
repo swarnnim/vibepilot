@@ -81,12 +81,24 @@ def jaccard(a: frozenset, b: frozenset) -> float:
     return len(a & b) / len(a | b)
 
 
-def score_candidate(candidate: Entity, profile: TasteProfile, selected) -> ScoreBreakdown:
-    """Score one candidate against the seed profile and the picks so far."""
+def score_candidate(candidate: Entity, profile: TasteProfile, selected, affinity: float = 0.0) -> ScoreBreakdown:
+    """Score one candidate against the seed profile and the picks so far.
+
+    Seed relatedness is measured through two independent lenses and the
+    stronger one counts: (a) shared-tag weight against the seed profile —
+    transparent, but weak across domains, whose tag vocabularies barely
+    overlap (movie plot keywords vs. artist descriptors); (b) the backend's
+    own taste-graph affinity (Qloo's graph, or the fixture graph's
+    tag-derived affinity offline), squared so weak affinities are discounted
+    and only a strong graph signal can carry a pick on its own. A candidate
+    with neither shared tags nor a real affinity still scores ~0 and is
+    dropped by the floor — no evidence, no pick.
+    """
     if candidate.tags:
-        seed_score = sum(profile.weight(t) for t in candidate.tags) / len(candidate.tags)
+        tag_score = sum(profile.weight(t) for t in candidate.tags) / len(candidate.tags)
     else:
-        seed_score = 0.0
+        tag_score = 0.0
+    seed_score = max(tag_score, affinity * affinity)
     if selected:
         ctags = candidate.tag_set()
         pair_score = sum(jaccard(ctags, p.tag_set()) for p in selected) / len(selected)
@@ -152,7 +164,7 @@ def choose_pick(candidates, profile: TasteProfile, selected, used_ids: set):
     for entity, affinity in candidates:
         if entity.id in used_ids:
             continue
-        bd = score_candidate(entity, profile, selected)
+        bd = score_candidate(entity, profile, selected, affinity=affinity)
         if bd.total < MIN_COHERENCE:
             continue
         ranked = (bd.total, affinity, entity.popularity)

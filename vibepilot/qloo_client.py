@@ -31,15 +31,20 @@ import urllib.request
 from .backend import TasteBackend
 from .models import Entity
 
-BASE_URL = "https://api.qloo.com"
+import os
+
+# Default is the public API. Hackathon keys are issued against a dedicated
+# hackathon API server — point QLOO_BASE_URL at the server URL from the
+# key-issuing email when using one.
+BASE_URL = os.environ.get("QLOO_BASE_URL", "https://api.qloo.com").rstrip("/")
 
 TYPE_URNS = {
     "person": "urn:entity:person",
     "movie": "urn:entity:movie",
-    "music_artist": "urn:entity:music_artist",
-    "restaurant": "urn:entity:restaurant",
+    "music_artist": "urn:entity:artist",
+    "restaurant": "urn:entity:place",
     "book": "urn:entity:book",
-    "fashion_brand": "urn:entity:fashion_brand",
+    "fashion_brand": "urn:entity:brand",
     "destination": "urn:entity:destination",
 }
 
@@ -69,9 +74,13 @@ def _entity_from_payload(item: dict) -> Entity | None:
     name = item.get("name") or ""
     if not eid or not name:
         return None
-    etype = item.get("type") or _urn_to_type(eid)
-    if etype.startswith("urn:"):
-        etype = _urn_to_type(etype)
+    raw_type = item.get("subtype") or item.get("type") or ""
+    if raw_type in ("", "urn:entity"):
+        types = item.get("types") or []
+        raw_type = types[0] if types else _urn_to_type(eid)
+    etype = _urn_to_type(raw_type) if str(raw_type).startswith("urn:") else raw_type
+    # Normalize API taxonomy back to VibePilot's internal type keys.
+    etype = {"artist": "music_artist", "place": "restaurant", "brand": "fashion_brand"}.get(etype, etype)
     props = item.get("properties") or {}
     city = props.get("city") or item.get("city") or ""
     blurb = props.get("description") or item.get("description") or ""
@@ -79,7 +88,10 @@ def _entity_from_payload(item: dict) -> Entity | None:
         id=eid,
         name=name,
         type=etype or "movie",
-        tags=item.get("tags") or props.get("tags") or (),
+        # The API returns 90+ tags per entity, relevance-ordered; the tail is
+        # long-tail noise that would swamp the coherence average. Keep the
+        # entity's core descriptors (compare: fixture entities carry ~8).
+        tags=(item.get("tags") or props.get("tags") or ())[:15],
         popularity=float(item.get("popularity") or 0.5),
         city=city,
         blurb=blurb,
@@ -89,7 +101,7 @@ def _entity_from_payload(item: dict) -> Entity | None:
 class QlooClient(TasteBackend):
     """TasteBackend over the live Qloo API."""
 
-    label = "Qloo live API (api.qloo.com)"
+    label = f"Qloo live API ({BASE_URL.replace('https://', '')})"
 
     def __init__(self, api_key: str | None = None, transport=None, timeout: int = 20):
         key = api_key or os.environ.get("QLOO_API_KEY", "")
