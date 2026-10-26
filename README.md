@@ -133,7 +133,7 @@ taste-graph, a hand-built 58-entity stand-in with three taste clusters:
 
 ```bash
 ./demo.sh                     # 3 scenarios end-to-end
-python3 run_tests.py          # 24 tests, all offline
+python3 run_tests.py          # 25 tests, all offline
 python3 -m vibepilot "I love Wes Anderson films and Radiohead — plan my Friday night" --offline
 ```
 
@@ -141,9 +141,15 @@ python3 -m vibepilot "I love Wes Anderson films and Radiohead — plan my Friday
 
 ```bash
 export QLOO_API_KEY=<your key>
+# Hackathon keys are issued against a dedicated API server — if your
+# key email names one, point QLOO_BASE_URL at it:
+export QLOO_BASE_URL=<server URL from your key email>   # optional
 python3 -m vibepilot "I love Wes Anderson films and Radiohead — plan my Friday night"
 python3 -m vibepilot --seeds "Perfect Days, Brian Eno" --occasion solo_recharge --format json
 ```
+
+Live mode is verified end-to-end (Oct 26, 2026): real seeds, real
+affinities, full 6/6-slot plans from the production taste graph.
 
 Pure Python 3 standard library. No pip installs, no other services, $0 to
 run in offline mode.
@@ -170,9 +176,12 @@ run in offline mode.
 * **Live mode needs your own Qloo API key** (`QLOO_API_KEY`). Request
   construction, auth headers and response parsing are covered by tests
   with a mocked transport; no key is bundled, by design.
-* **Qloo search results are tag-light** compared to insights results, so
-  in live mode the seed profile can be thinner than the candidates'
-  vocabulary; pairwise coherence compensates once the first pick lands.
+* **Cross-domain tag vocabularies barely overlap** (movie plot keywords
+  vs. artist descriptors), so the seed lens of the coherence score takes
+  the stronger of two signals: shared-tag weight, or the backend's
+  taste-graph affinity (squared, so weak affinities can't carry a pick).
+  A candidate with neither shared tags nor a real affinity is still
+  dropped — no evidence, no pick.
 * **Tag-overlap is a proxy for taste**, not taste itself — Qloo's affinity
   scores do the heavy graph lifting; the coherence layer adds
   cross-pick consistency and explainability on top.
@@ -181,7 +190,7 @@ run in offline mode.
 
 ## Tests
 
-`python3 run_tests.py` — 24 stdlib-only tests, zero network: fixture
+`python3 run_tests.py` — 25 stdlib-only tests, zero network: fixture
 search and cross-domain expansion, free-text seed resolution (including
 the word-boundary regression that kept the film *Her* from being detected
 inside "Everyw**her**e"), exact coherence math, the incoherent-pick drop
